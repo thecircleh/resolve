@@ -18,6 +18,9 @@ datasource db {
 // -----------------------------------------------------------
 // User
 // -----------------------------------------------------------
+// A User row IS the beta allowlist. Sign-in is refused for any email
+// without a row here, or whose row has been revoked. Rows are created by
+// an administrator on /admin, which also emails the invite.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -25,6 +28,14 @@ model User {
   isAdmin      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Invite / access tracking, surfaced on the admin dashboard.
+  invitedAt    DateTime?
+  invitedBy    String?   // email of the admin who sent the invite
+  lastLoginAt  DateTime?
+  // Set to revoke access while keeping the user's sessions and profile
+  // intact. Clearing it restores access. Preferred over deletion.
+  revokedAt    DateTime?
 
   profile      Profile?
   sessions     Session[]
