@@ -22,13 +22,29 @@ function getSecret(): Uint8Array {
 
 // ----- Magic-link tokens ----------------------------------------------
 
+export interface MagicLinkOptions {
+  // Defaults to MAGIC_LINK_TTL_SECONDS. Invites use a much longer window,
+  // since an invite email may sit unread for a day or more.
+  ttlSeconds?: number;
+  // Whether to mint a 6-digit native-app code alongside the link.
+  // Deliberately off for long-lived invite tokens: a 6-digit code is only
+  // 1,000,000 possibilities, which is fine for 15 minutes and not fine for
+  // a week. Invitees who are on mobile request a fresh short-lived code
+  // from the normal sign-in screen instead.
+  withCode?: boolean;
+}
+
 export async function createMagicLinkToken(
   userId: string,
-): Promise<{ token: string; code: string }> {
+  options: MagicLinkOptions = {},
+): Promise<{ token: string; code: string | null }> {
+  const { ttlSeconds = MAGIC_LINK_TTL_SECONDS, withCode = true } = options;
+
   const token = randomBytes(32).toString("base64url");
-  // 6-digit code for native-app sign-in
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000);
+  const code = withCode
+    ? String(Math.floor(100000 + Math.random() * 900000))
+    : null;
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
   await db.loginToken.create({
     data: { userId, token, code, expiresAt },
   });
@@ -43,9 +59,20 @@ export async function consumeMagicLinkToken(
   if (record.usedAt) return null;
   if (record.expiresAt.getTime() < Date.now()) return null;
 
+  // Access can be revoked after a link is issued but before it is used.
+  const user = await db.user.findUnique({
+    where: { id: record.userId },
+    select: { revokedAt: true },
+  });
+  if (!user || user.revokedAt) return null;
+
   await db.loginToken.update({
     where: { id: record.id },
     data: { usedAt: new Date() },
+  });
+  await db.user.update({
+    where: { id: record.userId },
+    data: { lastLoginAt: new Date() },
   });
 
   return { userId: record.userId };
@@ -58,6 +85,7 @@ export async function consumeCodeToken(
 ): Promise<{ userId: string } | null> {
   const user = await db.user.findUnique({ where: { email } });
   if (!user) return null;
+  if (user.revokedAt) return null;
 
   const record = await db.loginToken.findFirst({
     where: {
@@ -73,6 +101,10 @@ export async function consumeCodeToken(
   await db.loginToken.update({
     where: { id: record.id },
     data: { usedAt: new Date() },
+  });
+  await db.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
   });
 
   return { userId: user.id };
@@ -144,8 +176,13 @@ export async function getSessionUserId(): Promise<string | null> {
 export async function requireUser() {
   const userId = await getSessionUserId();
   if (!userId) return null;
-  return db.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     include: { profile: true },
   });
+  // A session JWT lives 30 days, so revocation has to be enforced here as
+  // well as at sign-in — otherwise a revoked user keeps working until
+  // their existing cookie happens to expire.
+  if (!user || user.revokedAt) return null;
+  return user;
 }

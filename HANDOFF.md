@@ -41,7 +41,9 @@ You do not need to do any of this yourself. Give this project to a local web dev
 
 4. **Choose a domain.** You can use a free Vercel subdomain (like resolve-beta.vercel.app) or point your own domain at Vercel.
 
-5. **Set the beta allowlist.** In the Vercel environment variables there is a `BETA_ALLOWLIST` field. Enter the emails of the beta testers who are allowed to sign up, comma-separated. Anyone not on that list can enter their email but won't receive a link. This gives you clean access control without needing to build user management.
+5. **Set your admin email.** In the Vercel environment variables there is an `ADMIN_EMAILS` field. Put your own email address in it. That is the only access setting you need — it lets you sign in and reach the `/admin` page.
+
+6. **Add your testers from the admin page.** Go to `/admin` and use the Beta testers panel: type an email, click "Add & send invite", and that person is added to the beta and emailed a sign-in link straight away. You can resend an invite or revoke someone's access from the same list. No developer and no environment variables involved.
 
 Total developer time to get all this done: half a day to a full day.
 

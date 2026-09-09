@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import TesterManager from "./TesterManager";
 
 interface Stats {
   users: number;
@@ -69,6 +70,8 @@ export default function AdminPage() {
         <Stat label="Est. spend today" value={`$${stats.estSpendTodayUsd.toFixed(2)}`} />
         <Stat label="Est. spend 7 days" value={`$${stats.estSpendWeekUsd.toFixed(2)}`} />
       </div>
+
+      <TesterManager />
 
       <h2 className="mt-12 text-sm font-semibold uppercase tracking-wide text-ink-soft">
         Recent sessions

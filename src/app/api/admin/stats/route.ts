@@ -1,26 +1,13 @@
-// Admin stats endpoint.
-//
-// Access control: user.isAdmin must be true, OR the user's email appears
-// in the ADMIN_EMAILS env var (comma-separated). The env var route means
-// you can grant yourself admin without touching the database.
+// Admin stats endpoint. See lib/admin.ts for how admin access is decided.
 
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAdmin } from "@/lib/admin";
 import { db } from "@/lib/db";
 import { estimateCostUsd } from "@/resolve/orchestrator";
 
-function isAdminEmail(email: string): boolean {
-  const list = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.toLowerCase().trim())
-    .filter(Boolean);
-  return list.includes(email.toLowerCase());
-}
-
 export async function GET() {
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!user.isAdmin && !isAdminEmail(user.email)) {
+  const admin = await requireAdmin();
+  if (!admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

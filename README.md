@@ -60,6 +60,26 @@ The app runs at http://localhost:3000.
 
 Go to http://localhost:3000/login and enter your email. If your `RESEND_API_KEY` is valid, you will receive an email. If not, look at the dev server logs — the magic-link URL will be printed to the console.
 
+## Managing beta access
+
+The `User` table is the allowlist. Sign-in is refused for any email that has
+no user record, so there is no environment variable to edit when the tester
+list changes.
+
+- **Bootstrap.** Put your own address in `ADMIN_EMAILS` (comma-separated).
+  Any address listed there is auto-created on its first sign-in request, so
+  the first administrator can get into an empty database.
+- **Add testers.** Sign in, go to `/admin`, and use the Beta testers panel.
+  Adding an email creates the account and immediately emails an invite link,
+  valid for `INVITE_TTL_DAYS` (default 7).
+- **Revoke.** Revoking blocks sign-in and expires any outstanding links, but
+  keeps the person's sessions and profile. There is no delete, because
+  deleting a user cascades to all of their beta data.
+- **Migrating off `BETA_ALLOWLIST`.** That variable no longer controls
+  access. If it is still set, `/admin` shows a one-click import that creates
+  accounts for any address in it that does not have one, so nobody is locked
+  out. Run it once, then delete the variable from Vercel.
+
 ## Deploying to production (Vercel)
 
 ### 1. Push the code to GitHub
