@@ -1,0 +1,185 @@
+// Resolve — Database Schema
+//
+// Four core entities:
+//   User    — a leader who uses the system
+//   Profile — the Resolve Business Context Profile, one per user
+//   Session — one conversation about one issue
+//   Message — a single turn in a session's conversation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------
+// User
+// -----------------------------------------------------------
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  isAdmin      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile      Profile?
+  sessions     Session[]
+  loginTokens  LoginToken[]
+}
+
+// -----------------------------------------------------------
+// Profile — the Resolve Business Context Profile
+//
+// Two shapes for the same data:
+//   builderMessages  — the conversational history of the intake
+//   profileText      — the finalized profile in structured markdown
+//
+// While the profile is being built, only builderMessages exists.
+// Once the Business Context Builder finalizes the profile, profileText
+// is populated and profileVersion is set (starts at "1.0").
+// -----------------------------------------------------------
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  builderMessages Json     @default("[]") // Array<{role, content}>
+  profileText     String?  @db.Text
+  profileVersion  String?
+  status          ProfileStatus @default(BUILDING)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+enum ProfileStatus {
+  BUILDING
+  FINALIZED
+  REFINING
+}
+
+// -----------------------------------------------------------
+// Session — one conversation about one issue
+//
+// State machine:
+//   ENTRY_ACTIVE    — talking to Situation Clarifier or Sales Planning
+//   BRIEFING_READY  — Entry produced briefing; handoff pending
+//   ENGINE_ACTIVE   — talking to a lane engine
+//   MONITOR_LOGGED  — filtered to Monitor; tracking note produced; ended
+//   OUTPUT_DELIVERED — full Required Output Standard produced
+// -----------------------------------------------------------
+model Session {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  entryPrompt   EntryPrompt      // which entry did the user start in
+  activePrompt  ActivePrompt     // which prompt is currently receiving messages
+  state         SessionState @default(ENTRY_ACTIVE)
+
+  // Populated after Entry produces briefing
+  laneClassification String?
+  tierClassification String?
+  briefingJson       Json?
+
+  // Populated after Engine produces final output
+  outputJson         Json?
+
+  // Populated if session was routed to Monitor lane
+  monitorNoteJson    Json?
+
+  title         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages      Message[]
+}
+
+enum EntryPrompt {
+  SITUATION_CLARIFIER
+  SALES_PLANNING
+}
+
+enum ActivePrompt {
+  SITUATION_CLARIFIER
+  SALES_PLANNING
+  DECISION_MAKER
+  BUSINESS_PLANNER
+  WORKFLOW_ARCHITECT
+}
+
+enum SessionState {
+  ENTRY_ACTIVE
+  BRIEFING_READY
+  ENGINE_ACTIVE
+  MONITOR_LOGGED
+  OUTPUT_DELIVERED
+}
+
+// -----------------------------------------------------------
+// Message — one turn in a session
+// -----------------------------------------------------------
+model Message {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role        MessageRole
+  content     String   @db.Text
+
+  // Which underlying prompt produced this message.
+  // Null for user messages.
+  fromPrompt  ActivePrompt?
+
+  // Token accounting for assistant messages (null for user messages).
+  // Used by the admin dashboard to estimate API spend.
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// -----------------------------------------------------------
+// ErrorLog — operational errors surfaced to the admin dashboard
+// -----------------------------------------------------------
+model ErrorLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  sessionId String?
+  context   String   // e.g. "session_message", "profile_message", "auth"
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// -----------------------------------------------------------
+// LoginToken — magic-link auth
+// -----------------------------------------------------------
+model LoginToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  // 6-digit numeric code for native-app sign-in (same expiry as the link)
+  code      String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([code])
+}
